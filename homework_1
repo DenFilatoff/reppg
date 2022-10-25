@@ -1,3 +1,58 @@
 Read Commited
 
-Session1 
+Session 1 
+Create table
+Insert
+Insert
+
+session 2
+postgres=!# select * from persons ;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+postgres=!#  select * from persons ;
+ В сессии 2 данные таблицы не видны ни до ни после коммита
+ в read commited данные вторая транзакция увидит только то что было до  начала выполнения транзакции
+Новой записи нет, поскольку на момент начала транзакции таблицы не было и данных тоже.
+
+
+
+ repeatable read
+ 
+ session 1
+ исходная таблица
+  id | first_name | second_name 
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+
+
+модифицированная таблица
+postgres=*# select * from persons;
+ id | first_name | second_name 
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sveta      | svetova
+  
+  
+ session 2
+
+
+ postgres=#  select * from persons;
+ id | first_name | second_name 
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+
+(3 rows)
+after commit
+postgres=*# select * from persons;
+ id | first_name | second_name 
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sveta      | svetova
+  До коммита запись не видна во второй сессии.
+После коммита новая запись видна во второй транзакции поскольку обеспечивается согласованность данных, 
+которые уже закоммичены другими транзакциями и не отображаются те данные которые еще не завершили изменение
+
+  
