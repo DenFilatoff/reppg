@@ -1,1 +1,117 @@
+Создана ВМ на ЯО
+Обзор
 
+Идентификатор  epdpfl6s95833koavi03
+
+Статус  Running
+Имя tample
+Дата создания 25.10.2022, в 19:22
+Внутренний FQDN  tample.ru-central1.internal
+Зона доступности ru-central1-b
+Описание tample
+Ресурсы
+Платформа   Intel Ice Lake
+Гарантированная доля vCPU  50%
+vCPU   2  RAM    4 ГБ Объём дискового пространства   15 ГБ
+Сеть
+Сетевой интерфейс
+Внутренний IPv4 10.129.0.22
+Публичный IPv4  84.201.178.123
+Подсеть  default-ru-central1-b
+
+
+Запуск контейнеров и создание сети контейнеров
+
+aster@tample:~$ sudo docker network create pg-net
+
+aster@tample:~$ sudo docker run --name postgres --network pg-net \
+ -e POSTGRES_PASSWORD=postgres -d -p 5432:5432 -v   \
+/var/lib/postgres:/var/lib/postgresql/data postgres:14
+
+aster@tample:~$ sudo docker run -it --rm --network pg-net --name pg-client postgres:14 psql -h postgres -U postgres
+Password for user postgres: 
+psql (14.5 (Debian 14.5-2.pgdg110+2), server 15.0 (Debian 15.0-1.pgdg110+1))
+WARNING: psql major version 14, server major version 15.
+         Some psql features might not work.
+Type "help" for help.
+
+Вставка данных в таблицу
+
+postgres=# CREATE TABLE Products
+(
+    Id SERIAL PRIMARY KEY,
+    ProductName VARCHAR(30) NOT NULL,
+    Manufacturer VARCHAR(20) NOT NULL,
+    ProductCount INTEGER DEFAULT 0,
+    Price NUMERIC
+);
+CREATE TABLE
+postgres=# INSERT INTO Products VALUES (1, 'Galaxy S8', 'Samsung', 3, 62000);
+INSERT 0 1
+postgres=# INSERT INTO Products VALUES (1, 'Galaxy S9', 'Samsung', 4, 63000);
+ERROR:  duplicate key value violates unique constraint "products_pkey"
+DETAIL:  Key (id)=(1) already exists.
+postgres=# INSERT INTO Products VALUES (2, 'Galaxy S9', 'Samsung', 4, 63000);
+INSERT 0 1
+postgres=# commit;
+WARNING:  there is no transaction in progress
+COMMIT
+postgres=# select * from Products;
+ id | productname | manufacturer | productcount | price 
+----+-------------+--------------+--------------+-------
+  1 | Galaxy S8   | Samsung      |            3 | 62000
+  2 | Galaxy S9   | Samsung      |            4 | 63000
+(2 rows)
+
+postgres=# exit;
+aster@tample:~$ 
+logout
+Connection to 84.201.178.123 closed.
+
+Проверка наличия данных в базе с ноутбука
+[aster@cobra ~]$ /usr/pgsql-15/src/bin/psql/psql -h 84.201.178.123 -p 5432 -U postgres postgres
+Password for user postgres: 
+psql (15.0, server 14.5 (Debian 14.5-2.pgdg110+2))
+Type "help" for help.
+
+postgres=# select * from Products;
+ id | productname | manufacturer | productcount | price 
+----+-------------+--------------+--------------+-------
+  1 | Galaxy S8   | Samsung      |            3 | 62000
+  2 | Galaxy S9   | Samsung      |            4 | 63000
+(2 rows)
+
+postgres=# 
+
+
+Останов контейнера с postgres и его удаление
+aster@tample:~$ docker stop  706830dcebd68bfc97675ad565a657ade3e434d0c7d770c195092a09d775bd2e
+706830dcebd68bfc97675ad565a657ade3e434d0c7d770c195092a09d775bd2e
+aster@tample:~$ sudo docker run --name postgres --network pg-net  -e POSTGRES_PASSWORD=postgres -d -p 5432:5432 -v   /var/lib/postgres:/var/lib/postgresql/data postgres:14
+docker: Error response from daemon: Conflict. The container name "/postgres" is already in use by container "706830dcebd68bfc97675ad565a657ade3e434d0c7d770c195092a09d775bd2e". You have to remove (or rename) that container to be able to reuse that name.
+See 'docker run --help'.
+aster@tample:~$ docker rm  706830dcebd68bfc97675ad565a657ade3e434d0c7d770c195092a09d775bd2e
+706830dcebd68bfc97675ad565a657ade3e434d0c7d770c195092a09d775bd2e
+
+Запуск контейнера с постргрес
+aster@tample:~$ sudo docker run --name postgres --network pg-net  -e POSTGRES_PASSWORD=postgres -d -p 5432:5432 -v   /var/lib/postgres:/var/lib/postgresql/data postgres:14
+
+
+Проверяем контейнеры
+aster@tample:~$ sudo docker ps -a
+CONTAINER ID   IMAGE                          COMMAND                  CREATED              STATUS                      PORTS                                       NAMES
+fbbdc73b3f11   postgres:14                    "docker-entrypoint.s…"   About a minute ago   Up About a minute           0.0.0.0:5432->5432/tcp, :::5432->5432/tcp   postgres
+268299c9f3da   postgres:14                    "docker-entrypoint.s…"   10 minutes ago       Up 10 minutes               5432/tcp                                    pg-client
+
+Проверяем  наличие данных с ноутбука после старта 
+[aster@cobra ~]$ /usr/pgsql-15/src/bin/psql/psql -h 84.201.178.123 -p 5432 -U postgres postgres
+Password for user postgres: 
+psql (15.0, server 14.5 (Debian 14.5-2.pgdg110+2))
+Type "help" for help.
+
+postgres=# select * from Products;
+ id | productname | manufacturer | productcount | price 
+----+-------------+--------------+--------------+-------
+  1 | Galaxy S8   | Samsung      |            3 | 62000
+  2 | Galaxy S9   | Samsung      |            4 | 63000
+(2 rows)
