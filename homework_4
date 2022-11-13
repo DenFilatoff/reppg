@@ -1,1 +1,271 @@
+1 СОЗДАЙТЕ НОВЫЙ КЛАСТЕР POSTGRESSQL 14
+aster@zephir:~$ sudo pg_createcluster 14 second 
+Creating new PostgreSQL cluster 14/second ...
+/usr/lib/postgresql/14/bin/initdb -D /var/lib/postgresql/14/second --auth-local peer --auth-host scram-sha-256 --no-instructions
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
 
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/14/second ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Etc/UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+Ver Cluster Port Status Owner    Data directory                Log file
+14  second  5433 down   postgres /var/lib/postgresql/14/second /var/log/postgresql/postgresql-14-second.log
+aster@zephir:~$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory                Log file
+14  main    5432 online postgres /mnt/data/main                /var/log/postgresql/postgresql-14-main.log
+14  second  5433 down   postgres /var/lib/postgresql/14/second /var/log/postgresql/postgresql-14-second.log
+aster@zephir:~$ pg_cluster 15 second restart 
+pg_cluster: command not found
+aster@zephir:~$ pg_ctlcluster 15 second restart 
+Error: specified cluster '15 second' does not exist
+aster@zephir:~$ pg_ctlcluster  second restart 
+Error: Usage: /usr/bin/pg_ctlcluster <version> <cluster> <action> [-- <pg_ctl options>]
+aster@zephir:~$ pg_ctlcluster 14  second restart 
+Warning: the cluster will not be running as a systemd service. Consider using systemctl:
+  sudo systemctl restart postgresql@14-second
+Error: You must run this program as the cluster owner (postgres) or root
+aster@zephir:~$ sudo pg_ctlcluster 14  second restart 
+aster@zephir:~$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory                Log file
+14  main    5432 online postgres /mnt/data/main                /var/log/postgresql/postgresql-14-main.log
+14  second  5433 online postgres /var/lib/postgresql/14/second /var/log/postgresql/postgresql-14-second.log
+
+2 ЗАЙДИТЕ В СОЗДАННЫЙ КЛАСТЕР ПОД ПОЛЬЗОВАТЕЛЕМ POSTGRES
+aster@zephir:~$ sudo su  - postgres
+postgres@zephir:~ PGPORT=5433; export PGPORT
+postgres@zephir:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+postgres=# 
+
+3 создайте новую базу данных testdb
+postgres=# CREATE DATABASE testdb;
+CREATE DATABASE
+
+4 зайдите в созданную базу данных под пользователем postgres
+postgres=# \c testdb;
+You are now connected to database "testdb" as user "postgres".
+
+5 создайте новую схему testnm
+testdb=# create schema testnm;
+CREATE SCHEMA
+
+6 создайте новую таблицу t1 с одной колонкой c1 типа integer
+testdb=# create table t1( c1 integer);
+CREATE TABLE
+
+7 вставьте строку со значением c1=1
+testdb=# insert into t1  values ( 1);
+INSERT 0 1
+testdb=# commit;
+WARNING:  there is no transaction in progress
+COMMIT
+
+8 создайте новую роль readonly
+testdb=# create role readonly;
+CREATE ROLE
+
+9 дайте новой роли право на подключение к базе данных testdb
+testdb=# grant connect on database testdb to readonly;
+GRANT
+
+10 дайте новой роли право на использование схемы testnm
+testdb=# GRANT USAGE ON SCHEMA testnm to readonly;
+GRANT
+
+11 дайте новой роли право на select для всех таблиц схемы testnm
+testdb=# GRANT SELECT  ON ALL TABLES IN SCHEMA  testnm to readonly;
+GRANT
+
+12 создайте пользователя testread с паролем test123
+testdb=# create user testread with password 'test123';
+CREATE ROLE
+
+13 дайте роль readonly пользователю testread
+testdb=# GRANT readonly to testread;
+GRANT ROLE
+
+14 зайдите под пользователем testread в базу данных testdb
+postgres@zephir:~$ psql -d testdb -U testread -W
+Password: 
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5433" failed: FATAL:  Peer authentication failed for user "testread"
+postgres@zephir:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+postgres=# \q
+
+Для авторизации по паролю правим  peer  на scram-sha-256
+aster@zephir:~$ sudo vi /etc/postgresql/14/second/pg_hba.conf
+-----------------------------------------------------------------------------
+# "local" is for Unix domain socket connections only
+local   all             all                                     scram-sha-256
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            scram-sha-256
+# IPv6 local connections:
+host    all             all             ::1/128                 scram-sha-256
+-----------------------------------------------------------------------------
+aster@zephir:~$ sudo pg_ctlcluster 14  second restart
+
+15 сделайте select * from t1;
+postgres@zephir:~$ PGPORT=5433; export PGPORT
+postgres@zephir:~$ psql -d testdb -U testread -W
+Password: 
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+testdb=> select * from t1;
+ERROR:  permission denied for table t1
+
+
+16 получилось? (могло если вы делали сами не по шпаргалке и не упустили один существенный момент про который позже)
+извлечь данные не получилось, поскольку обращение происходит к схеме public
+
+testdb=> \dt
+ public | t1   | table | postgres
+
+testdb=> select * from testnm.t1;
+ERROR:  relation "testnm.t1" does not exist
+
+17 напишите что именно произошло в тексте домашнего задания
+мы обращаемся к неймспейсу testnm, однако таблица в неймспейсе public
+
+18 у вас есть идеи почему? ведь права то дали?
+права дали, но таблицы там нет 
+
+19 посмотрите на список таблиц
+testdb=> \dt
+ public | t1   | table | postgres
+
+20 подсказка в шпаргалке под пунктом 20
+21 а почему так получилось с таблицей (если делали сами и без шпаргалки то может у вас все нормально)
+22 вернитесь в базу данных testdb под пользователем postgres
+postgres=# \c testdb
+You are now connected to database "testdb" as user "postgres".
+testdb=# \dt
+        List of relations
+ Schema | Name | Type  |  Owner   
+--------+------+-------+----------
+ public | t1   | table | postgres
+(1 row)
+
+
+
+23 удалите таблицу t1
+testdb=# drop table t1;
+DROP TABLE
+testdb=# 
+
+
+24 создайте ее заново но уже с явным указанием имени схемы testnm
+testdb=# create table testnm.t1( c1 integer);
+CREATE TABLE
+
+25 вставьте строку со значением c1=1
+testdb=# insert into testnm.t1  values ( 1);
+INSERT 0 1
+testdb=# commit;
+WARNING:  there is no transaction in progress
+COMMIT
+
+26 зайдите под пользователем testread в базу данных testdb
+postgres@zephir:~$ psql -d testdb -U testread -W
+Password: 
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+testdb=> \dt
+Did not find any relations.
+
+27 сделайте select * from testnm.t1;
+28 получилось?
+не получилось извлечь данные 
+29 есть идеи почему? если нет - смотрите шпаргалку
+testdb=> \dt
+Did not find any relations.
+30 как сделать так чтобы такое больше не повторялось? если нет идей - смотрите шпаргалку
+заново даем гранты, поскольку таблицу пересоздали
+testdb=# GRANT SELECT  ON ALL TABLES IN SCHEMA  testnm to readonly;
+GRANT
+
+31 сделайте select * from testnm.t1;
+32 получилось?
+33 есть идеи почему? если нет - смотрите шпаргалку
+31 сделайте select * from testnm.t1;
+testdb=> select * from testnm.t1;
+ c1 
+----
+  1
+(1 row)
+
+testdb=> 
+32 получилось?
+33 ура!
+34 теперь попробуйте выполнить команду create table t2(c1 integer); insert into t2 values (2);
+выполняем команду, все типа ок, но видим что таблица опять в паблике
+testdb=> create table t2(c1 integer); insert into t2 values (2);
+CREATE TABLE
+INSERT 0 1
+testdb=> commit;
+WARNING:  there is no transaction in progress
+COMMIT
+testdb=> \dt
+        List of relations
+ Schema | Name | Type  |  Owner   
+--------+------+-------+----------
+ public | t2   | table | tesselect * from testnm.t1;tread
+(1 row)
+
+testdb=> 
+
+35 а как так? нам же никто прав на создание таблиц и insert в них под ролью readonly?
+REVOKE USAGE ON SCHEMA public FROM testread;
+36 есть идеи как убрать эти права? если нет - смотрите шпаргалку
+запрещаем использовать паблик для создания объектов
+REVOKE USAGE ON SCHEMA public FROM testread;
+37 если вы справились сами то расскажите что сделали и почему, если смотрели шпаргалку - объясните что сделали и почему выполнив указанные в ней команды
+38 теперь попробуйте выполнить команду create table t3(c1 integer); insert into t2 values (2);
+postgres@zephir:~$ psql -d testdb -U testread -W
+Password: 
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+testdb=> create table t3(c1 integer); insert into t2 values (2);
+ERROR:  permission denied for schema public
+LINE 1: create table t3(c1 integer);
+                     ^
+ERROR:  relation "t2" does not exist
+LINE 1: insert into t2 values (2);
+                    ^
+testdb=> 
+ 
+
+testdb=> create table t2(c1 integer); insert into t2 values (2);
+ERROR:  permission denied for schema public
+LINE 1: create table t2(c1 integer);
+                     ^
+ERROR:  relation "t2" does not exist
+LINE 1: insert into t2 values (2);
+                    ^
+testdb=>  select * from testnm.t1;
+ c1 
+----
+  1
+(1 row)
+
+39 расскажите что получилось и почему
+после запрещения использования неймспейса паблик становится невозможным создание объектов в дефолтном пространстве
