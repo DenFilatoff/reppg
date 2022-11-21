@@ -1,1 +1,464 @@
+Установлен параметр checkpoint_timeout в 30 секунд
+
+postgres=# alter system set checkpoint_timeout = 30;
+ALTER SYSTEM
+postgres=# SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+postgres=# select name, setting from pg_settings where name like '%wal_size%' or name like '%checkpoint%' order by name;
+             name             | setting 
+------------------------------+---------
+ checkpoint_completion_target | 0.9
+ checkpoint_flush_after       | 32
+ checkpoint_timeout           | 30
+ checkpoint_warning           | 30
+ log_checkpoints              | off
+ max_wal_size                 | 16384
+ min_wal_size                 | 4096
+(7 rows)
+
+
+Переводим Бд  в архивлог-мод, поскольку WAL'ы перезатираются и нет возможности посчитать кол-во генерируемых журналов
+postgres=# ALTER SYSTEM SET archive_mode to 'ON';
+ALTER SYSTEM
+postgres=# SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+postgres=# show archive_mode;
+ archive_mode 
+--------------
+ off
+(1 row)
+
+налету не применяется, придется перезапустить PG
+postgres=# ALTER SYSTEM SET archive_command TO 'cp %p /var/lib/postgresql/14/main/pg_wal/archive_status/archive%f';
+ALTER SYSTEM
+postgres=#  SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+Перезапускаем, параметр применился
+aster@pgbench:~$ sudo systemctl restart postgresql
+aster@pgbench:~$ sudo su - postgres
+postgres@pgbench:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+postgres=# show archive_mode;
+ archive_mode 
+--------------
+ on
+(1 row)
+
+postgres=# \q
+
+
+
+
+
+
+
+Синхронный режим 
+
+postgres=# ALTER SYSTEM SET synchronous_commit = on;
+SELECT pg_reload_conf();
+ALTER SYSTEM
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+postgres=# exit;
+postgres@pgbench:~$ pgbench -i postgres
+dropping old tables...
+creating tables...
+generating data (client-side)...
+100000 of 100000 tuples (100%) done (elapsed 0.06 s, remaining 0.00 s)
+vacuuming...
+creating primary keys...
+done in 0.44 s (drop tables 0.04 s, create tables 0.01 s, client-side generate 0.21 s, vacuum 0.07 s, primary keys 0.11 s).
+postgres@pgbench:~$ pgbench -c8 -P 60 -T 600 -U postgres postgres
+pgbench (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+starting vacuum...end.
+progress: 60.0 s, 506.0 tps, lat 15.800 ms stddev 12.666
+progress: 120.0 s, 348.7 tps, lat 22.942 ms stddev 18.100
+progress: 180.0 s, 602.3 tps, lat 13.283 ms stddev 9.880
+progress: 240.0 s, 578.7 tps, lat 13.821 ms stddev 9.979
+progress: 300.0 s, 560.9 tps, lat 14.267 ms stddev 10.879
+progress: 360.0 s, 591.2 tps, lat 13.525 ms stddev 10.305
+progress: 420.0 s, 567.9 tps, lat 14.091 ms stddev 11.639
+progress: 480.0 s, 572.9 tps, lat 13.962 ms stddev 10.671
+progress: 540.0 s, 455.2 tps, lat 17.576 ms stddev 14.212
+progress: 600.0 s, 380.2 tps, lat 21.043 ms stddev 16.880
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 8
+number of threads: 1
+duration: 600 s
+number of transactions actually processed: 309849
+latency average = 15.491 ms
+latency stddev = 12.652 ms
+initial connection time = 19.058 ms
+tps = 516.417255 (without initial connection time)
+postgres@pgbench:~$ ls -la /var/lib/postgresql/14/main/pg_wal/archive_status
+total 425996
+drwx------ 3 postgres postgres     4096 Nov 21 10:06 .
+drwx------ 3 postgres postgres     4096 Nov 21 10:06 ..
+-rw------- 1 postgres postgres        0 Nov 21 10:05 000000010000000200000060.done
+drwxrwxr-x 2 postgres postgres     4096 Nov 21 09:53 archive
+-rw------- 1 postgres postgres 16777216 Nov 21 09:55 archive000000010000000200000047
+-rw------- 1 postgres postgres 16777216 Nov 21 09:56 archive000000010000000200000048
+-rw------- 1 postgres postgres 16777216 Nov 21 09:56 archive000000010000000200000049
+-rw------- 1 postgres postgres 16777216 Nov 21 09:56 archive00000001000000020000004A
+-rw------- 1 postgres postgres 16777216 Nov 21 09:57 archive00000001000000020000004B
+-rw------- 1 postgres postgres 16777216 Nov 21 09:57 archive00000001000000020000004C
+-rw------- 1 postgres postgres 16777216 Nov 21 09:58 archive00000001000000020000004D
+-rw------- 1 postgres postgres 16777216 Nov 21 09:58 archive00000001000000020000004E
+-rw------- 1 postgres postgres 16777216 Nov 21 09:59 archive00000001000000020000004F
+-rw------- 1 postgres postgres 16777216 Nov 21 09:59 archive000000010000000200000050
+-rw------- 1 postgres postgres 16777216 Nov 21 09:59 archive000000010000000200000051
+-rw------- 1 postgres postgres 16777216 Nov 21 10:00 archive000000010000000200000052
+-rw------- 1 postgres postgres 16777216 Nov 21 10:00 archive000000010000000200000053
+-rw------- 1 postgres postgres 16777216 Nov 21 10:01 archive000000010000000200000054
+-rw------- 1 postgres postgres 16777216 Nov 21 10:01 archive000000010000000200000055
+-rw------- 1 postgres postgres 16777216 Nov 21 10:01 archive000000010000000200000056
+-rw------- 1 postgres postgres 16777216 Nov 21 10:02 archive000000010000000200000057
+-rw------- 1 postgres postgres 16777216 Nov 21 10:02 archive000000010000000200000058
+-rw------- 1 postgres postgres 16777216 Nov 21 10:03 archive000000010000000200000059
+-rw------- 1 postgres postgres 16777216 Nov 21 10:03 archive00000001000000020000005A
+-rw------- 1 postgres postgres 16777216 Nov 21 10:03 archive00000001000000020000005B
+-rw------- 1 postgres postgres 16777216 Nov 21 10:04 archive00000001000000020000005C
+-rw------- 1 postgres postgres 16777216 Nov 21 10:04 archive00000001000000020000005D
+-rw------- 1 postgres postgres 16777216 Nov 21 10:05 archive00000001000000020000005E
+-rw------- 1 postgres postgres 16777216 Nov 21 10:05 archive00000001000000020000005F
+-rw------- 1 postgres postgres 16777216 Nov 21 10:05 archive000000010000000200000060
+
+
+
+2. Асинхронный режим
+postgres=# ALTER SYSTEM SET synchronous_commit = off;
+SELECT pg_reload_conf();
+ALTER SYSTEM
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+postgres@pgbench:~$ pgbench -i postgres
+dropping old tables...
+creating tables...
+generating data (client-side)...
+100000 of 100000 tuples (100%) done (elapsed 0.06 s, remaining 0.00 s)
+vacuuming...
+creating primary keys...
+done in 0.44 s (drop tables 0.04 s, create tables 0.01 s, client-side generate 0.21 s, vacuum 0.07 s, primary keys 0.11 s).
+postgres@pgbench:~$ pgbench -c8 -P 60 -T 600 -U postgres postgres
+pgbench (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+starting vacuum...end.
+progress: 60.0 s, 4174.3 tps, lat 1.915 ms stddev 0.665
+progress: 120.0 s, 4022.2 tps, lat 1.989 ms stddev 0.673
+progress: 180.0 s, 4192.6 tps, lat 1.908 ms stddev 0.634
+progress: 240.0 s, 4177.5 tps, lat 1.915 ms stddev 0.636
+progress: 300.0 s, 4121.7 tps, lat 1.941 ms stddev 0.648
+progress: 360.0 s, 4210.7 tps, lat 1.900 ms stddev 0.679
+progress: 420.0 s, 4284.7 tps, lat 1.867 ms stddev 0.618
+progress: 480.0 s, 4141.4 tps, lat 1.931 ms stddev 0.661
+progress: 540.0 s, 4148.8 tps, lat 1.928 ms stddev 0.638
+progress: 600.0 s, 4132.7 tps, lat 1.935 ms stddev 0.641
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 8
+number of threads: 1
+duration: 600 s
+number of transactions actually processed: 2496407
+latency average = 1.922 ms
+latency stddev = 0.650 ms
+initial connection time = 17.056 ms
+tps = 4160.699262 (without initial connection time)
+
+postgres@pgbench:~$ ls -lart --time-style="+%Y-%m-%d %H:%M:%S.%N" /var/lib/postgresql/14/main/pg_wal
+total 262156
+drwx------  2 postgres postgres     4096 2022-11-15 22:33:36.787917610 archive_status
+drwx------ 19 postgres postgres     4096 2022-11-21 07:05:30.396935018 ..
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:58:28.553937621 00000001000000020000002E
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:58:36.757961473 00000001000000020000002D
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:58:38.409966277 000000010000000200000030
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:58:46.065988540 00000001000000020000002F
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:58:54.702013654 000000010000000200000032
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:03.510039271 000000010000000200000031
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:07.634051265 000000010000000200000034
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:13.738069020 000000010000000200000033
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:21.914092385 000000010000000200000036
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:30.326113237 000000010000000200000035
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:37.198130311 00000001000000020000003B
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:39.250135416 000000010000000200000038
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:46.902154483 000000010000000200000037
+-rw-------  1 postgres postgres 16777216 2022-11-21 07:59:55.694176445 000000010000000200000039
+-rw-------  1 postgres postgres 16777216 2022-11-21 08:00:04.606198764 00000001000000020000003A
+drwx------  3 postgres postgres     4096 2022-11-21 08:00:34.034272860 .
+-rw-------  1 postgres postgres 16777216 2022-11-21 08:00:37.826282459 00000001000000020000002C
+
+
+
+в синхронном режиме при проигрывании нагрузки количество транзакций доходит до 4160 в секунду, сформировано 27 WAl'ов x 16Mb = 432Mb, за 1 контрольную точку - 16 Мб
+в то же время как при асинхронном режиме - 516 транзакций в секунду, сформировано 88 WAl'ов x 16Mb = 1408Mb, за 1 контрольную точку - 96Мб
+
+
+При синхронном режиме генерируется примерно 2 файла в минуту
+rw------- 1 postgres postgres 16777216 2022-11-21 10:02:35.331756657 archive000000010000000200000058
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:03:02.999837334 archive000000010000000200000059
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:03:14.355870516 archive00000001000000020000005A
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:03:36.943936622 archive00000001000000020000005B
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:04:06.272022618 archive00000001000000020000005C
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:04:35.016107123 archive00000001000000020000005D
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:05:04.936195216 archive00000001000000020000005E
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:05:26.240258033 archive00000001000000020000005F
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:05:42.916307294 archive000000010000000200000060
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:07:13.388575237 archive000000010000000200000061
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:08:46.684852853 archive000000010000000200000062
+
+
+При асинхронном режиме  генерируется примерно 8-9 файлов в минуту
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:04.184329669 archive0000000100000002000000C7
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:05.996334418 archive0000000100000002000000C8
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:14.672357178 archive0000000100000002000000C9
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:23.152379455 archive0000000100000002000000CA
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:31.672401868 archive0000000100000002000000CB
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:34.800410103 archive0000000100000002000000CC
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:41.308427251 archive0000000100000002000000CD
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:49.676449324 archive0000000100000002000000CE
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:33:58.468472547 archive0000000100000002000000CF
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:04.416488274 archive0000000100000002000000D0
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:08.524499144 archive0000000100000002000000D1
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:16.552520403 archive0000000100000002000000D2
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:25.152543207 archive0000000100000002000000D3
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:33.400565102 archive0000000100000002000000D4
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:35.320570202 archive0000000100000002000000D5
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:42.788590052 archive0000000100000002000000D6
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:51.212612468 archive0000000100000002000000D7
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:34:59.784635304 archive0000000100000002000000D8
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:04.568648059 archive0000000100000002000000D9
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:10.344663469 archive0000000100000002000000DA
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:18.896686307 archive0000000100000002000000DB
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:26.092705542 archive0000000100000002000000DC
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:34.200727236 archive0000000100000002000000DD
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:35.740731358 archive0000000100000002000000DE
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:43.852753088 archive0000000100000002000000DF
+-rw------- 1 postgres postgres 16777216 2022-11-21 10:35:51.856774549 archive0000000100000002000000E0
+
+
+в асинхронном режиме WAL'ы переключаются быстрее, без "расписания" 
+Увеличение производительности можно объяснить тем что при синхронном режиме происходит обеспечение согласованности данных и 
+происходит синхронный сброс WAL'ов на диск, а при асинхронном - запись в датафайлы будет происходить до момента 
+подтверждения транзакции от клиента и сброса данных в журнал, т.е журнал может не успевать за данными в датафайлах
+
+
+
+========================================================
+Создаем новый кластер
+
+aster@pgbench:~$  pg_lsclusters
+Ver Cluster Port Status Owner    Data directory              Log file
+14  main    5432 online postgres /var/lib/postgresql/14/main /var/log/postgresql/postgresql-14-main.log
+
+aster@pgbench:~$ sudo pg_createcluster 14 checks --  --data-checksums
+Creating new PostgreSQL cluster 14/checks ...
+/usr/lib/postgresql/14/bin/initdb -D /var/lib/postgresql/14/checks --auth-local peer --auth-host scram-sha-256 --no-instructions --data-checksums
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are enabled.
+
+fixing permissions on existing directory /var/lib/postgresql/14/checks ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Etc/UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+Ver Cluster Port Status Owner    Data directory                Log file
+14  checks  5433 down   postgres /var/lib/postgresql/14/checks /var/log/postgresql/postgresql-14-checks.log
+aster@pgbench:~$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory                Log file
+14  checks  5433 down   postgres /var/lib/postgresql/14/checks /var/log/postgresql/postgresql-14-checks.log
+14  main    5432 online postgres /var/lib/postgresql/14/main   /var/log/postgresql/postgresql-14-main.log
+
+Стартуем кластер
+aster@pgbench:~$ sudo pg_ctlcluster 14 checks start
+aster@pgbench:~$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory                Log file
+14  checks  5433 online postgres /var/lib/postgresql/14/checks /var/log/postgresql/postgresql-14-checks.log
+14  main    5432 online postgres /var/lib/postgresql/14/main   /var/log/postgresql/postgresql-14-main.log
+
+aster@pgbench:~$ sudo su - postgres
+postgres@pgbench:~$ export PGPORT=5433
+postgres@pgbench:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+
+
+aster@pgbench:~$ sudo su - postgres
+postgres@pgbench:~$ export PGPORT=5433
+postgres@pgbench:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+Создаем некую таблицу
+postgres=# CREATE TABLE tutorials (id int, tutorial_name text);
+CREATE TABLE
+postgres=# insert into tutorials values(1, 'TUTORIAL_1');
+INSERT 0 1
+postgres=# commit;
+WARNING:  there is no transaction in progress
+COMMIT
+
+Узнаем файл хранения (маппинг таблицы)
+postgres=# SELECT pg_relation_filepath('tutorials');
+ pg_relation_filepath 
+----------------------
+ base/13761/16384
+(1 row)
+
+postgres=#  insert into tutorials values(2, 'TUTORIAL_2');
+INSERT 0 1
+postgres=# insert into tutorials values(3, 'TUTORIAL_3');
+INSERT 0 1
+postgres=# SELECT pg_relation_filepath('tutorials');
+ pg_relation_filepath 
+----------------------
+ base/13761/16384
+(1 row)
+
+postgres=# \q
+postgres@pgbench:~$ 
+
+Останавливаем кластер
+aster@pgbench:~$  sudo pg_ctlcluster 14 checks stop
+aster@pgbench:~$  sudo pg_ctlcluster 14 checks status
+pg_ctl: no server running
+aster@pgbench:~$ sudo su - postgres
+postgres@pgbench:~$ cd /var/lib/postgresql/14/checks/base/13761
+postgres@pgbench:~/14/checks/base/13761$ ls
+112	   13588      2337	2607_vm   2617_vm   2665      2690	2836	  3256	    3467      3602	4147  4172
+113	   13589      2579	2608	  2618	    2666      2691	2836_fsm  3257	    3468      3602_fsm	4148  4173
+1247	   13589_fsm  2600	2608_fsm  2618_fsm  2667      2692	2836_vm   3258	    3501      3602_vm	4149  4174
+1247_fsm   13589_vm   2600_fsm	2608_vm   2618_vm   2668      2693	2837	  3350	    3502      3603	4150  5002
+1247_vm    13592      2600_vm	2609	  2619	    2669      2696	2838	  3351	    3503      3603_fsm	4151  548
+1249	   13593      2601	2609_fsm  2619_fsm  2670      2699	2838_fsm  3379	    3534      3603_vm	4152  549
+1249_fsm   13594      2601_fsm	2609_vm   2619_vm   2673      2701	2838_vm   3380	    3541      3604	4153  6102
+1249_vm    13594_fsm  2601_vm	2610	  2620	    2673_fsm  2702	2839	  3381	    3541_fsm  3605	4154  6104
+1255	   13594_vm   2602	2610_fsm  2650	    2674      2703	2840	  3394	    3541_vm   3606	4155  6106
+1255_fsm   13597      2602_fsm	2610_vm   2651	    2674_fsm  2704	2840_fsm  3394_fsm  3542      3607	4156  6110
+1255_vm    13598      2602_vm	2611	  2652	    2675      2753	2840_vm   3394_vm   3574      3608	4157  6111
+1259	   1417       2603	2612	  2653	    2678      2753_fsm	2841	  3395	    3575      3609	4158  6112
+1259_fsm   1418       2603_fsm	2612_fsm  2654	    2679      2753_vm	2995	  3429	    3576      3712	4159  6113
+1259_vm    16384      2603_vm	2612_vm   2655	    2680      2754	2996	  3430	    3596      3764	4160  6117
+13579	   16387      2604	2613	  2656	    2681      2755	3079	  3431	    3597      3764_fsm	4163  6175
+13579_fsm  16388      2605	2615	  2657	    2682      2756	3079_fsm  3433	    3598      3764_vm	4164  6176
+13579_vm   174	      2605_fsm	2615_fsm  2658	    2683      2757	3079_vm   3439	    3599      3766	4165  826
+13582	   175	      2605_vm	2615_vm   2659	    2684      2830	3080	  3440	    3600      3767	4166  827
+13583	   2187       2606	2616	  2660	    2685      2831	3081	  3455	    3600_fsm  3997	4167  828
+13584	   2224       2606_fsm	2616_fsm  2661	    2686      2832	3085	  3456	    3600_vm   4143	4168  pg_filenode.map
+13584_fsm  2228       2606_vm	2616_vm   2662	    2687      2833	3118	  3456_fsm  3601      4144	4169  pg_internal.init
+13584_vm   2328       2607	2617	  2663	    2688      2834	3119	  3456_vm   3601_fsm  4145	4170  PG_VERSION
+13587	   2336       2607_fsm	2617_fsm  2664	    2689      2835	3164	  3466	    3601_vm   4146	4171
+postgres@pgbench:~/14/checks/base/13761$ ls -la 16384
+-rw------- 1 postgres postgres 8192 Nov 21 14:59 16384
+Правим файл (меняем два байта)
+postgres@pgbench:~/14/checks/base/13761$ vi 16384
+postgres@pgbench:~/14/checks/base/13761$ 
+logout
+
+Старт кластера
+aster@pgbench:~$ sudo pg_ctlcluster 14 checks start
+aster@pgbench:~$ sudo su - postgres
+postgres@pgbench:~$ export PGPORT=5433
+postgres@pgbench:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+Пытаемся прочитать из таблицы
+postgres=# select * from tutorials;
+WARNING:  page verification failed, calculated checksum 59197 but expected 44081
+ERROR:  invalid page in block 0 of relation base/13761/16384
+postgres=# 
+postgres=# 
+postgres=# SELECT datname FROM pg_database WHERE oid  = 16384;
+ datname 
+---------
+(0 rows)
+
+postgres=# SELECT datname FROM pg_database WHERE oid  = 13761
+postgres-# ;
+ datname  
+----------
+ postgres
+(1 row)
+
+
+
+
+postgres=# SELECT relname, relkind FROM pg_class WHERE relfilenode = 16384;
+  relname  | relkind 
+-----------+---------
+ tutorials | r
+(1 row)
+
+postgres=# SHOW data_checksums;
+ data_checksums 
+----------------
+ on
+(1 row)
+
+
+                                    ^
+postgres=# \q
+
+postgres@pgbench:~$ psql
+psql (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+Type "help" for help.
+
+
+postgres=# SELECT datname, checksum_failures, checksum_last_failure FROM pg_stat_database WHERE datname IS NOT NULL;
+  datname  | checksum_failures |    checksum_last_failure     
+-----------+-------------------+------------------------------
+ postgres  |                 1 | 2022-11-21 15:03:20.76523+00
+ template1 |                 0 | 
+ template0 |                 0 | 
+(3 rows)
+
+Выставляем игнор ошибки
+postgres=# SET ignore_checksum_failure = on;
+SET
+
+Читаем из таблицы 
+postgres=# select * from tutorials;
+WARNING:  page verification failed, calculated checksum 59197 but expected 44081
+ id | tutorial_name 
+----+---------------
+  1 | TUTORIAL_1
+  2 | TUTORIAL_2
+  3 | TUTORIAL_3
+(3 rows)
+
+postgres=# 
+
+
+
 
