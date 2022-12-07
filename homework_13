@@ -1,0 +1,327 @@
+aster@pgbench:~$ sudo pg_createcluster 14 bench
+Creating new PostgreSQL cluster 14/bench ...
+/usr/lib/postgresql/14/bin/initdb -D /var/lib/postgresql/14/bench --auth-local peer --auth-host scram-sha-256 --no-instructions
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/14/bench ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Etc/UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+Ver Cluster Port Status Owner    Data directory               Log file
+14  bench   5434 down   postgres /var/lib/postgresql/14/bench /var/log/postgresql/postgresql-14-bench.log
+aster@pgbench:~$ sudo pg_ctlcluster 14 bench start
+aster@pgbench:~$ 
+
+Дефолтные параметры для последующего тюнинга
+postgres=# Show shared_buffers;
+ shared_buffers 
+----------------
+ 1GB
+(1 row)
+
+postgres=# show wal_buffers;
+ wal_buffers 
+-------------
+ 16MB
+(1 row)
+
+postgres=# show effective_cache_size;
+ effective_cache_size 
+----------------------
+ 3GB
+(1 row)
+
+postgres=# show work_mem;
+ work_mem 
+----------
+ 6553kB
+(1 row)
+
+postgres=# show maintenance_work_mem;
+ maintenance_work_mem 
+----------------------
+ 512MB
+(1 row)
+
+postgres=# show synchronous_commit;
+ synchronous_commit 
+--------------------
+ off
+(1 row)
+
+postgres=# show max_connections;
+ max_connections 
+-----------------
+ 40
+(1 row)
+
+postgres=# show max_prepared_transactions;
+ max_prepared_transactions 
+---------------------------
+ 0
+(1 row)
+
+postgres=# show max_worker_processes;
+ max_worker_processes 
+----------------------
+ 8
+(1 row)
+
+postgres=# show max_parallel_workers_per_gather;
+ max_parallel_workers_per_gather 
+---------------------------------
+ 2
+(1 row)
+
+postgres=# show max_parallel_workers;
+ max_parallel_workers 
+----------------------
+ 8
+(1 row)
+
+
+
+postgres=# show fsync;
+ fsync 
+-------
+ on
+(1 row)
+
+postgres=# show autovacuum_max_workers;
+ autovacuum_max_workers 
+------------------------
+ 3
+(1 row)
+
+postgres=# show autovacuum_vacuum_scale_factor;
+ autovacuum_vacuum_scale_factor 
+--------------------------------
+ 0.1
+(1 row)
+
+postgres=# show autovacuum_analyze_scale_factor;
+ autovacuum_analyze_scale_factor 
+---------------------------------
+ 0.2
+(1 row)
+
+
+postgres=# show default_statistics_target;
+ default_statistics_target 
+---------------------------
+ 500
+(1 row)
+
+
+
+
+postgres=# show min_wal_size;
+ min_wal_size 
+--------------
+ 4GB
+(1 row)
+
+postgres=# show max_wal_size;
+ max_wal_size 
+--------------
+ 16GB
+(1 row)
+
+Ресурсы ВМ 
+aster@pgbench:~$ sudo  dmidecode -t 4 | egrep -i 'core (count|enabled)|thread'
+	Core Count: 1
+	Core Enabled: 1
+	Thread Count: 2
+
+aster@pgbench:~$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           3.8Gi       261Mi       1.0Gi       204Mi       2.6Gi       3.1Gi
+Swap:             0B          0B          0B
+
+
+
+Запускаем pgbench на дефолтных настройках
+postgres@pgbench:~$ pgbench -i
+dropping old tables...
+NOTICE:  table "pgbench_accounts" does not exist, skipping
+NOTICE:  table "pgbench_branches" does not exist, skipping
+NOTICE:  table "pgbench_history" does not exist, skipping
+NOTICE:  table "pgbench_tellers" does not exist, skipping
+creating tables...
+generating data (client-side)...
+100000 of 100000 tuples (100%) done (elapsed 0.10 s, remaining 0.00 s)
+vacuuming...
+creating primary keys...
+done in 0.97 s (drop tables 0.01 s, create tables 0.25 s, client-side generate 0.38 s, vacuum 0.20 s, primary keys 0.13 s).
+postgres@pgbench:~$ pgbench -c8 -P 60 -T 600 -U postgres postgres
+pgbench (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+starting vacuum...end.
+progress: 60.0 s, 574.4 tps, lat 13.920 ms stddev 10.544
+progress: 120.0 s, 445.1 tps, lat 17.973 ms stddev 16.180
+progress: 180.0 s, 479.3 tps, lat 16.686 ms stddev 13.633
+progress: 240.0 s, 477.3 tps, lat 16.760 ms stddev 13.936
+progress: 300.0 s, 522.4 tps, lat 15.317 ms stddev 13.310
+progress: 360.0 s, 553.4 tps, lat 14.454 ms stddev 10.524
+progress: 420.0 s, 557.6 tps, lat 14.348 ms stddev 10.949
+progress: 480.0 s, 522.3 tps, lat 15.318 ms stddev 12.620
+progress: 540.0 s, 490.9 tps, lat 16.289 ms stddev 13.501
+progress: 600.0 s, 503.3 tps, lat 15.899 ms stddev 13.153
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 8
+number of threads: 1
+duration: 600 s
+number of transactions actually processed: 307570
+latency average = 15.605 ms
+latency stddev = 12.876 ms
+initial connection time = 19.587 ms
+tps = 512.619258 (without initial connection time)
+
+Результат дефолтных настроек - 513 транзакций в секунду
+Меняем настройки по рекомендациям сайзинга  на ресурсе https://pgconfigurator.cybertec-postgresql.com/
+
+
+alter system set shared_buffers = '1024 MB';  
+На выделенных серверах полезным объемом для shared_buffers будет
+значение 1/4 памяти в системе. Если есть большие активные порции ба-
+зы данных, сложные запросы, большое число одновременных соединений,
+длительные транзакции, если доступен большой объем оперативной па-
+мяти или большее количество процессоров, то можно подымать это зна-
+чение и мониторить результат, чтобы не привести к «деградации» (па-
+дению) производительности. В моем случае 1GB является адекватной величиной - т.е. 4Gb/4
+
+alter system set work_mem = '32 MB';
+work_mem выделяется отдельно на каждую операцию (от одного до нескольких раз за один запрос). Ра-
+зумное значение параметра определяется следующим образом: количество
+доступной оперативной памяти (после того, как из общего объема вычли
+память, требуемую для других приложений, и shared_buffers) делится на
+максимальное число одновременных запросов умноженное на среднее чис-
+ло операций в запросе, которые требуют памяти.
+Если объём памяти недостаточен для сортировки некоторого результа-
+та, то серверный процесс будет использовать временные файлы. Если же
+объём памяти слишком велик, то это может привести к своппингу.
+При 40 max_connections 32Мб составит 1200Мб, что вполне можно выделить в текущей системе
+
+
+alter system set maintenance_work_mem = '320 MB';
+Память для работы команды VACUUM: maintenance_work_mem
+Неплохо бы устанавливать его значение от 50 до 75% размера
+самой большой таблицы или индекса или, если точно определить невоз-
+можно, от 32 до 256 МБ. Следует устанавливать большее значение, чем для
+work_mem. Слишком большие значения приведут к использованию свопа.
+Например, при памяти 1–4 ГБ рекомендуется устанавливать 128–512 MB.
+т.е. менять значение нет необходимости
+
+
+alter system set effective_cache_size = '3 GB';  
+— этот параметр сообщает PostgreSQL примерный
+объём файлового кэша операционной системы, оптимизатор исполь-
+зует эту оценку для построения плана запроса (указывает планиров-
+щику на размер самого большого объекта в базе данных, который
+теоретически может быть закеширован).
+Исходя из имеющихся настроек ставим в 3 Гб
+
+alter system set effective_io_concurrency = 100; 
+Задаёт допустимое число параллельных операций ввода/вывода, которое говорит PostgreSQL о том, сколько операций ввода/вывода могут быть выполнены одновременно. Чем больше это число, тем больше операций ввода/вывода будет пытаться выполнить параллельно PostgreSQL в отдельном сеансе. 
+
+
+alter system set max_wal_senders = 0;  нулевое значение подразумевает автоматическое управление постгресом
+
+alter system set synchronous_commit = off; 
+определяет нужно ли ждать WAL запи-
+си на диск перед возвратом успешного завершения транзакции для подключенного клиента. По умолчанию и для безопасности данный параметр
+установлен в «on» (включен). Перфоманс увеличивается
+Ставим параметр в off
+
+
+Уменьшаем  частоту контрольных точек для экономии ввода-вывода двумя этими параметрами, увеличивая журналы
+alter system set max_wal_size = '1024 MB'; 
+
+
+alter system set min_wal_size = '512 MB'; 
+
+
+alter system set wal_compression = on; 
+alter system set wal_buffers = -1  ; 
+alter system set max_worker_processes = 2;  меняем дефолтное значение на кол-во процессорных ядер
+alter system set max_parallel_workers = 2; меняем дефолтное значение на кол-во процессорных ядер
+alter system set maintenance_io_concurrency = 100; увеличиваем параллелизм операций обслуживания в клиентских сеансах
+
+После установки предложенных настроек
+postgres@pgbench:~$ pgbench -c8 -P 60 -T 600 -U postgres postgres
+pgbench (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+starting vacuum...end.
+progress: 60.0 s, 3974.6 tps, lat 2.012 ms stddev 0.714
+progress: 120.0 s, 3931.7 tps, lat 2.034 ms stddev 0.728
+progress: 180.0 s, 4080.5 tps, lat 1.960 ms stddev 0.681
+progress: 240.0 s, 4011.9 tps, lat 1.994 ms stddev 0.717
+progress: 300.0 s, 3757.4 tps, lat 2.129 ms stddev 0.815
+progress: 360.0 s, 3993.4 tps, lat 2.003 ms stddev 0.707
+progress: 420.0 s, 4057.2 tps, lat 1.971 ms stddev 0.709
+progress: 480.0 s, 4021.5 tps, lat 1.989 ms stddev 0.683
+progress: 540.0 s, 3940.1 tps, lat 2.030 ms stddev 0.753
+progress: 600.0 s, 3901.1 tps, lat 2.050 ms stddev 0.721
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 8
+number of threads: 1
+duration: 600 s
+number of transactions actually processed: 2380173
+latency average = 2.016 ms
+latency stddev = 0.725 ms
+initial connection time = 17.125 ms
+tps = 3966.934855 (without initial connection time)
+
+Результат предложенных настроек - 3967 транзакций в секунду
+
+Пытаемся улучшить результат 
+пробуем увеличить размеры структур памяти для обработки данных
+alter system set shared_buffers = '1612 MB';
+alter system set work_mem = '64MB';
+меняем границы срабатывания автовакууми с дефолтных значений - 50
+alter system set  autovacuum_analyze_threshold = 200;
+alter system set   autovacuum_vacuum_threshold = 200;
+
+postgres@pgbench:~$ pgbench -c8 -P 60 -T 600 -U postgres postgres
+pgbench (14.5 (Ubuntu 14.5-0ubuntu0.22.04.1))
+starting vacuum...end.
+progress: 60.0 s, 4000.3 tps, lat 1.999 ms stddev 0.699
+progress: 120.0 s, 4202.3 tps, lat 1.903 ms stddev 0.688
+progress: 180.0 s, 4478.0 tps, lat 1.786 ms stddev 0.628
+progress: 240.0 s, 4209.6 tps, lat 1.900 ms stddev 0.685
+progress: 300.0 s, 4259.8 tps, lat 1.878 ms stddev 0.693
+progress: 360.0 s, 4568.2 tps, lat 1.751 ms stddev 0.621
+progress: 420.0 s, 4485.5 tps, lat 1.783 ms stddev 0.643
+progress: 480.0 s, 4221.6 tps, lat 1.895 ms stddev 0.676
+progress: 540.0 s, 4064.3 tps, lat 1.968 ms stddev 0.695
+progress: 600.0 s, 4204.6 tps, lat 1.902 ms stddev 0.645
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 8
+number of threads: 1
+duration: 600 s
+number of transactions actually processed: 2561652
+latency average = 1.873 ms
+latency stddev = 0.671 ms
+initial connection time = 16.819 ms
+tps = 4269.523308 (without initial connection time)
+postgres@pgbench:~$ 
+
+
+Результат полученных итоговых настроек - 4270 транзакций в секунду
